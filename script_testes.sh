@@ -1,6 +1,6 @@
 #PBS -N main
 #PBS -q testes
-#PBS -l nodes=1:ppn=2
+#PBS -l nodes=1:ppn=4
 #PBS -e outputs/erros_testes
 #PBS -o outputs/saidas_testes
 #PBS -m abe

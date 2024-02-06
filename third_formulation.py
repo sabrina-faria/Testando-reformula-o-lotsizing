@@ -55,7 +55,7 @@ def define_obj_function(mdl: Model, data: dataCS) -> Model:
         for i in range(data.nitems)
         for j in range(data.r)
         for t in range(data.nperiodos)
-    ) + sum(
+    ) + mdl.sum(
         data.cs[i, t, k] * mdl.x[i, j, t, k]
         for i in range(data.nitems)
         for j in range(data.r)
@@ -83,7 +83,7 @@ def constraint_demanda_satisfeita(mdl: Model, data: dataCS) -> Model:
 def constraint_capacity(mdl: Model, data: dataCS) -> Model:
     for j in range(data.r):
         for t in range(data.nperiodos):
-            if t > 0 and t < data.nperiodos:
+            if t > 0:
                 mdl.add_constraint(
                     mdl.sum(data.st[i] * mdl.y[i, j, t] for i in range(data.nitems))
                     + mdl.sum(
@@ -91,20 +91,9 @@ def constraint_capacity(mdl: Model, data: dataCS) -> Model:
                         for i in range(data.nitems)
                         for k in range(t, data.nperiodos)
                     )
-                    + mdl.u[j, t] + mdl.e[j, t]
-                    <= data.cap[0] + mdl.u[j, t - 1],
-                    ctname="capacity",
-                )
-            elif t == data.nperiodos:
-                mdl.add_constraint(
-                    mdl.sum(data.st[i] * mdl.y[i, j, t] for i in range(data.nitems))
-                    + mdl.sum(
-                        data.vt[i] * data.d[i, k] * mdl.x[i, j, t, k]
-                        for i in range(data.nitems)
-                        for k in range(t, data.nperiodos)
-                    )
+                    + mdl.u[j, t]
                     + mdl.e[j, t]
-                    <= data.cap[0] + mdl.u[j, t - 1],
+                    == data.cap[0] + mdl.u[j, t - 1],
                     ctname="capacity",
                 )
             else:
@@ -115,8 +104,9 @@ def constraint_capacity(mdl: Model, data: dataCS) -> Model:
                         for i in range(data.nitems)
                         for k in range(t, data.nperiodos)
                     )
-                    + mdl.u[j, t] + mdl.e[j, t]
-                    <= data.cap[0]
+                    + mdl.u[j, t]
+                    + mdl.e[j, t]
+                    == data.cap[0]
                 )
     return mdl
 
@@ -159,30 +149,16 @@ def constraint_setup_max_um_item(mdl: Model, data: dataCS) -> Model:
     )
     return mdl
 
-def constraint_simetria_do_crossover(mdl: Model, data: dataCS) -> Model:    
-    for j in range(data.r):
-        for t in range(1,data.nperiodos):
-            mdl.add_constraints(mdl.v[1,j,t-1] == mdl.y[1,j,t])
-
-            for i in range(1,data.nitens):
-                mdl.add_constraints(mdl.v[i,j,t-1] >= mdl.y[i,j,t] - mdl.sum(mdl.y[u,j,t] for u in range(i))
-    )
-    return mdl
-
-def constraint_simetria_de_máquinas_SBC3(mdl: Model, data: dataCS) -> Model:    
-    for j in range(1,data.r):
-        for t in range(data.nperiodos):
-            mdl.add_constraints(mdl.y[0,j-1,t] >= mdl.y[0,j,t]
-    )
-    return mdl
 
 def constraint_crossover_by_need(mdl: Model, data: dataCS) -> Model:
-    for j in range(data.r):
-        for t in range(1,data.nperiodos):
-            mdl.add_constraints(
-                mdl.e[j, t+1] <= (1 - mdl.v[j,t]) * data.cap[0]
+    for i in range(data.nitems):
+        for j in range(data.r):
+            for t in range(data.nperiodos - 1):
+                mdl.add_constraint(
+                    mdl.e[j, t + 1] <= (1 - mdl.v[i, j, t]) * data.cap[0]
                 )
     return mdl
+
 
 def total_setup_cost(mdl, data):
     return sum(
@@ -244,8 +220,6 @@ def build_model(data: dataCS, capacity: float) -> Model:
     mdl = constraint_tempo_emprestado_crossover(mdl, data)
     mdl = constraint_proibe_crossover_sem_setup(mdl, data)
     mdl = constraint_setup_max_um_item(mdl, data)
-    mdl = constraint_simetria_do_crossover(mdl, data)
-    mdl = constraint_simetria_de_máquinas_SBC3(mdl, data)
     mdl = constraint_crossover_by_need(mdl, data)
 
     mdl.add_kpi(total_setup_cost(mdl, data), "total_setup_cost")

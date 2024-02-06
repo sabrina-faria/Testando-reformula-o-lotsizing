@@ -1,6 +1,6 @@
 #PBS -N main
 #PBS -q paralela
-#PBS -l nodes=1:ppn=128
+#PBS -l nodes=2:ppn=128
 #PBS -e outputs/erros_paralela
 #PBS -o outputs/saidas_paralela
 #PBS -m abe

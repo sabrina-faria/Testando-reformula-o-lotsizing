@@ -1,10 +1,12 @@
 import re
 from dataclasses import dataclass
 from typing import Dict
-
+import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from context import ProjectContext
+
 
 @dataclass
 class LerDados:
@@ -18,7 +20,7 @@ class LerDados:
     sc: np.ndarray
     d: np.ndarray
 
-    def __init__(self, instance: str):
+    def __init__(self, context: ProjectContext, instance: str):
         self.instance = instance
         self._instance = Path.resolve(Path.cwd() / "data" / instance)
         sep = self._detect_delimiter()
@@ -38,12 +40,12 @@ class LerDados:
         self.cap = np.array(df.iloc[inicio:fim, 0].astype(float), dtype=int)
         inicio, fim = fim, fim + self.nitems
         self.vt = np.array(df.iloc[inicio:fim, 0].astype(float), dtype=int)
-        self.hc = np.array(df.iloc[inicio:fim, 1].astype(float), dtype=int)
+        self.hc = context.custo_estoque * np.array(df.iloc[inicio:fim, 1].astype(float), dtype=int)
         self.st = np.array(df.iloc[inicio:fim, 2].astype(float), dtype=int)
-        self.sc = np.array(df.iloc[inicio:fim, 3].astype(float), dtype=int)
+        self.sc = context.custo_setup * np.array(df.iloc[inicio:fim, 3].astype(float), dtype=int)
         inicio, fim = fim, fim + self.nperiodos
         if self.nitems <= 15:
-            self.d = np.array(df.iloc[inicio:fim, :].astype(float), dtype=int).T
+            self._d_no_sorted = np.array(df.iloc[inicio:fim, :].astype(float), dtype=int).T
         else:
             demanda_sup = np.array(df.iloc[inicio:fim, :].astype(float), dtype=int)
             inicio, fim = fim, fim + self.nperiodos
@@ -54,7 +56,17 @@ class LerDados:
                 .astype(float),
                 dtype=int,
             )
-            self.d = np.append(demanda_sup, demanda_inf, axis=1).T
+            self._d_no_sorted = np.append(demanda_sup, demanda_inf, axis=1).T
+        self._sort_index()
+
+    def _sort_index(self):
+        sorted_indices = sorted(range(len(self.st)), key=lambda i: self.st[i], reverse=True)
+        # Ordenar o vetor st em ordem decrescente e os demais vetores de acordo com a ordem dos itens
+        self.st = np.array([self.st[i] for i in sorted_indices]) 
+        self.vt = np.array([self.vt[i] for i in sorted_indices])
+        self.hc = np.array([self.hc[i] for i in sorted_indices])
+        self.sc = np.array([self.sc[i] for i in sorted_indices])
+        self.d = np.array([self._d_no_sorted[i] for i in sorted_indices])
 
     def __str__(self) -> str:
         return f"{self.instance}_cap_{self.cap[0]}".replace(".dat", "").replace(".DAT", "")
@@ -85,13 +97,13 @@ class dataCS(LerDados):
     cs: Dict
     r: int
 
-    def __init__(self, instance: str, r: int, original_capacity: bool = False):
-        super().__init__(instance)
+    def __init__(self, context: ProjectContext, instance: str, r: int, original_capacity: bool = False):
+        super().__init__(context, instance)
         self._create_vc_cs()
         self.r = r
         if not original_capacity:
             self.original_cap = self.cap
-            self.cap = [int(self.original_cap / self.r)]
+            self.cap = self._lot_sizing_capacity()
 
     def __str__(self) -> str:
         return f"{super().__str__()}_nmaq_{self.r}"
