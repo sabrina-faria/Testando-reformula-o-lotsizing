@@ -31,6 +31,8 @@ def create_variables(mdl: Model, data: dataCS) -> Model:
     mdl.u = mdl.continuous_var_dict(
         ((j, t) for j in range(data.r) for t in range(data.nperiodos)), lb=0, name=f"u"
     )  # tempo extra emprestado para o setup t + 1
+    mdl.z = mdl.continuous_var(lb=0, name=f"u")
+    
     mdl.x = mdl.continuous_var_dict(
         (
             (i, j, t, k)
@@ -46,14 +48,26 @@ def create_variables(mdl: Model, data: dataCS) -> Model:
     return mdl
 
 
+def cs_aux(data):
+    cs_aux = {}
+    for i in range(data.nitems):
+        for t in range(data.nperiodos):
+            for k in range(data.nperiodos):
+                for j in range(data.r):
+                    cs_aux[i, j, t, k] = j * 0.00001 + sum(data.hc[i] for u in range(t, k)) * data.d[i, k]
+
+    return cs_aux
+
+
 def define_obj_function(mdl: Model, data: dataCS) -> Model:
+    cs_aux = cs_aux(data)
     mtd_func = mdl.sum(
         data.sc[i] * mdl.y[i, j, t]
         for i in range(data.nitems)
         for j in range(data.r)
         for t in range(data.nperiodos)
     ) + sum(
-        data.cs[i, t, k] * mdl.x[i, j, t, k]
+        cs_aux[i, j, t, k] * mdl.x[i, j, t, k]
         for i in range(data.nitems)
         for j in range(data.r)
         for t in range(data.nperiodos)
@@ -145,6 +159,44 @@ def constraint_setup_max_um_item(mdl: Model, data: dataCS) -> Model:
     return mdl
 
 
+def constraint_simetria_do_crossover(mdl: Model, data: dataCS) -> Model:
+    for j in range(data.r):
+        for t in range(1, data.nperiodos):
+            mdl.add_constraints(mdl.v[1, j, t - 1] == mdl.y[1, j, t])
+
+            for i in range(1, data.nitens):
+                mdl.add_constraints(
+                    mdl.v[i, j, t - 1]
+                    >= mdl.y[i, j, t] - mdl.sum(mdl.y[u, j, t] for u in range(i))
+                )
+    return mdl
+
+
+def constraint_simetria_do_máquinas_nova(mdl: Model, data: dataCS) -> Model:
+    for i in range(data.nitens):
+        for j in range(1, data.r):
+            for t in range(data.nperiodos):
+                mdl.add_constraints(
+                    mdl.sum(2 ** (i - k) * mdl.y[k, j - 1, 1] for k in range(i + 1))
+                    >= mdl.sum(2 ** (i - k) * mdl.y[k, j, 1] for k in range(i + 1))
+                )
+    return mdl
+
+def valor_funcao_obj(mdl: Model, data: dataCS) -> Model:
+    z = mdl.sum(
+        data.sc[i] * mdl.y[i, j, t]
+        for i in range(data.nitems)
+        for j in range(data.r)
+        for t in range(data.nperiodos)
+    ) + sum(
+        data.cs[i, j, t, k] * mdl.x[i, j, t, k]
+        for i in range(data.nitems)
+        for j in range(data.r)
+        for t in range(data.nperiodos)
+        for k in range(t, data.nperiodos)
+    )
+    return mdl
+
 def total_setup_cost(mdl, data):
     return sum(
         data.sc[i] * mdl.y[i, j, t]
@@ -205,6 +257,9 @@ def build_model(data: dataCS, capacity: float) -> Model:
     mdl = constraint_tempo_emprestado_crossover(mdl, data)
     mdl = constraint_proibe_crossover_sem_setup(mdl, data)
     mdl = constraint_setup_max_um_item(mdl, data)
+    mdl = constraint_simetria_do_crossover(mdl, data)
+    mdl = constraint_simetria_do_máquinas_nova(mdl, data)
+    mdl = valor_funcao_obj(mdl, data)
 
     mdl.add_kpi(total_setup_cost(mdl, data), "total_setup_cost")
     mdl.add_kpi(total_estoque_cost(mdl, data), "total_estoque_cost")

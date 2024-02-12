@@ -6,7 +6,7 @@ from read_file import dataCS
 
 
 def create_variables(mdl: Model, data: dataCS) -> Model:
-    mdl.y = mdl.continuous_var_dict(
+    mdl.y = mdl.binary_var_dict(
         (
             (i, j, t)
             for i in range(data.nitems)
@@ -14,9 +14,10 @@ def create_variables(mdl: Model, data: dataCS) -> Model:
             for t in range(data.nperiodos)
         ),
         lb=0,
+        ub=1,
         name=f"y",
     )
-    mdl.v = mdl.continuous_var_dict(
+    mdl.v = mdl.binary_var_dict(
         (
             (i, j, t)
             for i in range(data.nitems)
@@ -24,14 +25,12 @@ def create_variables(mdl: Model, data: dataCS) -> Model:
             for t in range(data.nperiodos)
         ),
         lb=0,
+        ub=1,
         name=f"v",
     )
     mdl.u = mdl.continuous_var_dict(
         ((j, t) for j in range(data.r) for t in range(data.nperiodos)), lb=0, name=f"u"
     )  # tempo extra emprestado para o setup t + 1
-    mdl.e = mdl.continuous_var_dict(
-        ((j, t) for j in range(data.r) for t in range(data.nperiodos)), lb=0, name=f"e"
-    )  # folga no período t na máquina j
     mdl.x = mdl.continuous_var_dict(
         (
             (i, j, t, k)
@@ -90,11 +89,9 @@ def constraint_capacity(mdl: Model, data: dataCS) -> Model:
                         for k in range(t, data.nperiodos)
                     )
                     + mdl.u[j, t]
-                    + mdl.e[j, t]
-                    == data.cap[0] + mdl.u[j, t - 1],
+                    <= data.cap[0] + mdl.u[j, t - 1],
                     ctname="capacity",
                 )
-
             else:
                 mdl.add_constraint(
                     mdl.sum(data.st[i] * mdl.y[i, j, t] for i in range(data.nitems))
@@ -104,8 +101,7 @@ def constraint_capacity(mdl: Model, data: dataCS) -> Model:
                         for k in range(t, data.nperiodos)
                     )
                     + mdl.u[j, t]
-                    + mdl.e[j, t]
-                    == data.cap[0]
+                    <= data.cap[0]
                 )
     return mdl
 
@@ -147,6 +143,30 @@ def constraint_setup_max_um_item(mdl: Model, data: dataCS) -> Model:
         for t in range(1, data.nperiodos)
     )
     return mdl
+
+
+def constraint_simetria_do_crossover(mdl: Model, data: dataCS) -> Model:
+    for j in range(data.r):
+        for t in range(1, data.nperiodos):
+            mdl.add_constraint(mdl.v[1, j, t - 1] == mdl.y[1, j, t])
+
+            for i in range(1, data.nitems):
+                mdl.add_constraint(
+                    mdl.v[i, j, t - 1] >= mdl.y[i, j, t] - mdl.sum(mdl.y[u, j, t] for u in range(i))
+                )
+    return mdl
+
+
+def constraint_simetria_do_máquinas_nova(mdl: Model, data: dataCS) -> Model:
+    for i in range(data.nitems):
+        for j in range(1, data.r):
+            for t in range(data.nperiodos):
+                mdl.add_constraint(
+                    mdl.sum(2 ** (i - k) * mdl.y[k, j - 1, 1] for k in range(i + 1))
+                    >= mdl.sum(2 ** (i - k) * mdl.y[k, j, 1] for k in range(i + 1))
+                )
+    return mdl
+
 
 def total_setup_cost(mdl, data):
     return sum(
@@ -208,6 +228,8 @@ def build_model(data: dataCS, capacity: float) -> Model:
     mdl = constraint_tempo_emprestado_crossover(mdl, data)
     mdl = constraint_proibe_crossover_sem_setup(mdl, data)
     mdl = constraint_setup_max_um_item(mdl, data)
+    mdl = constraint_simetria_do_crossover(mdl, data)
+    mdl = constraint_simetria_do_máquinas_nova(mdl, data)
 
     mdl.add_kpi(total_setup_cost(mdl, data), "total_setup_cost")
     mdl.add_kpi(total_estoque_cost(mdl, data), "total_estoque_cost")
