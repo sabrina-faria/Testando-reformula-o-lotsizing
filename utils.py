@@ -48,10 +48,21 @@ def add_new_kpi(kpis: Dict[str, any], result, data: dataCS, **kwargs) -> dict:
         100 * kpis.get("used_capacity", 0) / (data.cap[0] * data.r * data.nperiodos)
     )
     kpis["nmaquinas"] = data.r
+    kpis["real obj function"] = data.valor_funcao_obj
     for key, value in kwargs.items():
         kpis[key] = value
     return kpis
 
+def cs_aux(data: dataCS):
+    cs_aux = np.zeros((data.nitems, data.r, data.nperiodos, data.nperiodos))
+    for j in range(data.r):
+        for i in range(data.nitems):
+            for t in range(data.nperiodos):
+                for k in range(data.nperiodos):
+                    cs_aux[i, j, t, k] = (
+                        data.vc[i, t] + 0.00001*j + sum(data.hc[i] for u in range(t, k))
+                    ) * data.d[i, k]
+    return cs_aux
 
 def closest_to_IDEAL_CAPACITY_percent(
     results_per_instance: List[Dict[str, any]]
@@ -197,12 +208,6 @@ def solve_optimized_model(
     complete_path_to_save = Path.resolve(
         constants.OTIMIZADOS_INDIVIDUAIS_PATH / suffix_path
     )
-
-    path_to_detalhados = Path.resolve(constants.DETALHADOS_INDIVIDUAIS_PATH / suffix_path)
-
-    # Adicione esta parte para salvar os valores das variáveis em um arquivo Excel
-    result.as_df().to_excel(f"{path_to_detalhados}_variables.xlsx", index=False)
-    status.as_df().to_excel(f"{path_to_detalhados}_variables_relaxado.xlsx", index=False)
 
     df_results_optimized = pd.DataFrame([kpis])
     df_results_optimized.to_excel(f"{complete_path_to_save}.xlsx", index=False)
