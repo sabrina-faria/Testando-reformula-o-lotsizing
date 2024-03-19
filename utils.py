@@ -48,7 +48,6 @@ def add_new_kpi(kpis: Dict[str, any], result, data: dataCS, **kwargs) -> dict:
         100 * kpis.get("used_capacity", 0) / (data.cap[0] * data.r * data.nperiodos)
     )
     kpis["nmaquinas"] = data.r
-    kpis["real obj function"] = data.valor_funcao_obj
     for key, value in kwargs.items():
         kpis[key] = value
     return kpis
